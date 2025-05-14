@@ -1,0 +1,74 @@
+name: Terraform workflow apply-destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Terraform action to perform: apply or destroy'
+        required: true
+        default: 'apply'
+        type: choice
+        options:
+          - apply
+          - destroy
+
+env:
+  AWS_REGION: "us-east-1"
+  TF_VERSION: "1.5.0"
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+
+  terraform:
+
+    name: Terraform Plan/Apply/Destroy
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: arn:aws:iam::557548602903:role/mytestrole-OIDC
+          aws-region: ${{ env.AWS_REGION }}
+          id-token: true
+
+      - name: Terraform Init
+        run: |
+          cd infra
+          terraform init
+
+      - name: Terraform Validate
+        run: |
+          cd infra
+          terraform validate
+
+      - name: Terraform Plan
+        if: ${{ github.event.inputs.action == 'apply' }}
+        run: |
+          cd infra
+          terraform plan -var-file="../env/dev/terraform.tfvars" -out=tfplan
+
+      - name: Terraform Apply
+        if: ${{ github.event.inputs.action == 'apply' }}
+        run: |
+          cd infra
+          terraform apply -auto-approve tfplan
+
+      - name: Terraform Destroy
+        if: ${{ github.event.inputs.action == 'destroy' }}
+        run: |
+          cd infra
+          terraform destroy -var-file="../env/dev/terraform.tfvars" -auto-approve
